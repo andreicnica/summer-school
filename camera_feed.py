@@ -1,143 +1,107 @@
 import torch
 import cv2
 import numpy as np
-from argparse import Namespace
-from termcolor import colored as clr
-import datetime
 import os
 import argparse
+import time
+import torchvision.transforms as transforms
+import torch
 
-WIDTH = 24
-HEIGHT = 28
-ZONE_FACTOR = 2
-
-
-# Useful functions
-def print_info(message):
-    print(clr("[MAIN] ", "yellow") + message)
-
-
-def print_colored(info, variable, color):
-    print("{} {}".format(clr(info, color), variable))
-
-    """
-    Set optional checkpoint load path 
-    """
+FULL_CAPTURE_WIN = "Full_capture"
+CROP_WIN = "Crop"
+COLOR_CROP = (0, 0, 255)
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Live test.')
+    parser = argparse.ArgumentParser(description='Live test & data gathering.')
     parser.add_argument("-chk", '--checkpoint_path', type=str,
                         dest="checkpoint", default=False,
-                        help='path to checkpoint save file')
+                        help='Path to model checkpoint.')
+    parser.add_argument('--save-folder', type=str,
+                        dest="save_folder", default="datasets/",
+                        help='Save folder of collected images.')
+    parser.add_argument('--zone-factor', type=float, default=0.5,
+                        help='Percentage of full view image to crop.')
+    parser.add_argument('--full-view-size', type=int, default=512,
+                        help='Size in px of "full view" window.')
+    parser.add_argument('--crop-view-size', type=int, default=512,
+                        help='Size in px of "crop" window.')
+    parser.add_argument('--camera-id', type=int, default=0, help='Initial crop view port size.')
+
+    # ==============================================================================================
+    # -- Load arguments
 
     args = parser.parse_args()
+    checkpoint_load = False
     if "checkpoint" in args:
         checkpoint_load = args.checkpoint
-    else:
-        checkpoint_load = False
+    save_folder = args.save_folder
 
-    # ============================================
+    camera_id = args.camera_id
+    zone_factor = args.zone_factor
+    view_size = args.view_size
 
-    config = read_config()
-    print_info("Startig train script: {}".format(datetime.datetime.now()))
+    # ==============================================================================================
+    # -- Load model
+    model: torch.nn.Module = None
+    transform: transforms.Compose = None
 
-    # Create Data (local storage of important data)
-    data = Namespace()
-
-    experiment_cfg = config.experiment
-    use_cuda = config.general.use_cuda
-    batch_size = config.general.batch_size
-
-    model = get_model(config.model.name)(config.model)
-    if use_cuda:
-        model.cuda()
-
-    data_cfg = config.dataset
-    mean = torch.FloatTensor(data_cfg.mean).unsqueeze(1).unsqueeze(2) \
-        .expand((3, HEIGHT, WIDTH))
-    std = torch.FloatTensor(data_cfg.std).unsqueeze(1).unsqueeze(2) \
-        .expand((3, HEIGHT, WIDTH))
-    if use_cuda:
-        mean = mean.cuda()
-        std = std.cuda()
-
-    # ============================================
-    # model_path = config.experiment.resume
     if checkpoint_load:
-        model_path = checkpoint_load
-    else:
-        model_path = config.experiment.resume
+        # TODO Load model and weights
+        pass
+    transforms.RG
+    # transform = transforms.Compose(
+    #     [transforms.ToTensor(),
+    #      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
-    if os.path.isfile(model_path):
-        checkpoint = torch.load(model_path)
+    # ==============================================================================================
+    # -- Data saving
 
-        print_colored("=> loading checkpoint: ", model_path, "red")
-        print_colored("===> Evaluation prec1 avg: ",
-                      checkpoint["eval_prec1"].avg, "red")
+    if not os.path.isdir(save_folder):
+        os.mkdir(save_folder)
 
-        # ==================================================================
-        # -- Partial model arch
-        model_dict = model.state_dict()
-        pretrained_dict = checkpoint['model']
-        diff = {k: v for k, v in model_dict.items() if \
-                k in pretrained_dict and pretrained_dict[
-                    k].size() != v.size()}
-        pretrained_dict.update(diff)
+    print(f"Saving data to: {save_folder}")
 
-        state = model.state_dict()
-        state.update(pretrained_dict)
-        model.load_state_dict(state)
-        # ==================================================================
+    imgs_collected = {}
+    img_format = f"{int(time.time())}_{{}}.png"
 
-    model.eval()
+    # ==============================================================================================
+    # -- Start camera feed and initialize capturing information
 
-    cam = cv2.VideoCapture(0)
+    cam = cv2.VideoCapture(camera_id)
     ret, frame = cam.read()
-    cv2.imshow("Frame", frame); cv2.waitKey(0); cv2.destroyAllWindows()
+    assert ret, "Cannot read from camera."
 
-    zone_factor = ZONE_FACTOR
-    zone_offset = np.array([WIDTH, HEIGHT]) * zone_factor
+    view_scale = view_size / float(frame.shape[1])
+
+    cv2.namedWindow(FULL_CAPTURE_WIN, cv2.WINDOW_NORMAL)
+    cv2.namedWindow(CROP_WIN, cv2.WINDOW_NORMAL)
 
     frame_no = 0
-    test_loss = torch.autograd.Variable(torch.LongTensor([1]))
-    if use_cuda:
-        test_loss = test_loss.cuda()
     while ret:
-        zone_offset = (np.array([WIDTH, HEIGHT]) * zone_factor).astype(int)
+        zone_offset = (np.array([frame.shape[0], frame.shape[1]]) * zone_factor).astype(int)
 
         ret, frame = cam.read()
 
         frame_show = frame.copy()
         frame_show = cv2.flip(frame_show, 1)
 
+        # -- Get crop
         center = (np.array([frame.shape[1], frame.shape[0]]) / 2).astype(int)
         p1 = center - zone_offset
         p2 = center + zone_offset
-
         scan = frame[p1[1]: p2[1], p1[0]:p2[0], :]
-        cv2.imshow("Scan", scan)
-        scan = cv2.resize(scan, (WIDTH, HEIGHT))
-        scan = cv2.cvtColor(scan, cv2.COLOR_BGR2RGB)
 
-        scan = torch.FloatTensor(scan.astype(float))
-        if use_cuda:
-            scan = scan.cuda()
+        # Color crop in full view
 
-        # transform to RGB
-        scan = scan.transpose(2, 0).transpose(1, 2)
-        scan.div_(255)
-        # print(scan)
+        if checkpoint_load:
+            # Transform to RGB
+            with torch.no_grad:
+                in_data = transform(scan.transpose((2, 0, 1))).unsqueeze(0)
+                output = model(in_data)
+                _, predicted = torch.max(output, 1)
 
-        scan = (scan - mean) / std
-        res = model(torch.autograd.Variable(scan.unsqueeze(0)))
-        if res.data[0][0] > res.data[0][1]:
-            cv2.rectangle(frame_show, tuple(p1), tuple(p2), (0, 255, 0),
-                          thickness=2)
-        else:
-            cv2.rectangle(frame_show, tuple(p1), tuple(p2), (0, 0, 255),
-                          thickness=2)
-        cv2.imshow("GRAB", frame_show)
+        cv2.imshow(FULL_CAPTURE_WIN, frame_show)
 
         # print(torch.nn.CrossEntropyLoss()(res, test_loss))
         print(res)
