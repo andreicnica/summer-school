@@ -106,8 +106,8 @@ dependencies:
     - torch==0.4.0
     - tqdm==4.23.4
     - tsne==0.1.8
-    - ujson==1.35
+    - ujson==1.35 
     - urllib3==1.23
     - wrapt==1.10.11
-prefix: /home/andrei/anaconda2/envs/summer_py
+
 
