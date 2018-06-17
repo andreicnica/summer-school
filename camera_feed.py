@@ -6,10 +6,40 @@ import argparse
 import time
 import torchvision.transforms as transforms
 import torch
+import sys
+import re
 
 FULL_CAPTURE_WIN = "Full_capture"
 CROP_WIN = "Crop"
 COLOR_CROP = (0, 0, 255)
+
+RECORD_COLOR = [(0, 255, 0), (0, 0, 255)]
+REC_POSITION = (50, 80)
+REC_RADIUS = 20
+LABEL_POSITION = (5, 25)
+FONT = cv2.FONT_HERSHEY_TRIPLEX
+FONT_SIZE = 0.6
+FONT_CLR = 255
+
+ACTION_KEYS = {
+    "zoom_in": {"key": ",", "info": "Increase crop size."},
+    "zoom_out": {"key": ".", "info": "Decrease crop size."},
+    "label": {"key": "[0-9]", "info": "Set label keys."},
+    "record": {"key": "x", "info": "Toggle record on/off."},
+}
+
+
+def get_img_path(base_folder: str, label: int, img_name: str):
+    fld = os.path.join(base_folder, str(label))
+    if not os.path.isdir(fld):
+        os.mkdir(fld)
+    return os.path.join(fld, img_name)
+
+def clear_line(no_lines: int):
+    for i in range(no_lines):
+        sys.stdout.write("\033[F")  # back to previous line
+        sys.stdout.write("\033[K")  # clear line
+
 
 if __name__ == '__main__':
 
@@ -22,9 +52,11 @@ if __name__ == '__main__':
                         help='Save folder of collected images.')
     parser.add_argument('--zone-factor', type=float, default=0.5,
                         help='Percentage of full view image to crop.')
+    parser.add_argument('--zoom-factor-step', type=float, default=0.05,
+                        help='Zoom factor.')
     parser.add_argument('--full-view-size', type=int, default=512,
                         help='Size in px of "full view" window.')
-    parser.add_argument('--crop-view-size', type=int, default=512,
+    parser.add_argument('--crop-view-size', type=int, default=256,
                         help='Size in px of "crop" window.')
     parser.add_argument('--camera-id', type=int, default=0, help='Initial crop view port size.')
 
@@ -39,17 +71,19 @@ if __name__ == '__main__':
 
     camera_id = args.camera_id
     zone_factor = args.zone_factor
-    view_size = args.view_size
+    view_size = args.full_view_size
+    crop_view_size = args.crop_view_size
+    zoom_factor_step = args.zoom_factor_step
 
     # ==============================================================================================
-    # -- Load model
+    # -- Load model & classification data
     model: torch.nn.Module = None
     transform: transforms.Compose = None
 
     if checkpoint_load:
         # TODO Load model and weights
         pass
-    transforms.RG
+    # transforms.RG
     # transform = transforms.Compose(
     #     [transforms.ToTensor(),
     #      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
@@ -77,23 +111,49 @@ if __name__ == '__main__':
     cv2.namedWindow(FULL_CAPTURE_WIN, cv2.WINDOW_NORMAL)
     cv2.namedWindow(CROP_WIN, cv2.WINDOW_NORMAL)
 
+    # ==============================================================================================
+    # -- Print information
+    keys_msg = "\t ||  ".join([f'[{x["key"]}] {x["info"]}' for k, x in ACTION_KEYS.items()])
+    print_info = f"{keys_msg}\nCollected data: {{}}\nSelected label: {{}}\n" \
+                 f"Recording: {{}}\nPredictions: {{}}"
+
+    # ==============================================================================================
+    # -- Useful variables
     frame_no = 0
+    crt_label = 0
+    last_msg_len = 0
+    predicted = -1
+
+    recording = False
+    predictions = None
+
+    keys = argparse.Namespace()
+    keys.__dict__.update({k: v["key"] for k, v in ACTION_KEYS.items()})
+
+    print("=" * 80)
     while ret:
-        zone_offset = (np.array([frame.shape[0], frame.shape[1]]) * zone_factor).astype(int)
+        zone_offset = (np.array([frame.shape[0], frame.shape[0]]) * zone_factor / 2.).astype(int)
 
         ret, frame = cam.read()
 
-        frame_show = frame.copy()
-        frame_show = cv2.flip(frame_show, 1)
+        # Get crop from original frame
+        center = (np.array([frame.shape[1], frame.shape[0]]) / 2.).astype(int)
 
-        # -- Get crop
-        center = (np.array([frame.shape[1], frame.shape[0]]) / 2).astype(int)
         p1 = center - zone_offset
         p2 = center + zone_offset
+
         scan = frame[p1[1]: p2[1], p1[0]:p2[0], :]
 
-        # Color crop in full view
+        # Record data
+        if recording:
+            if crt_label in imgs_collected:
+                imgs_collected[crt_label] += 1
+            else:
+                imgs_collected[crt_label] = 0
+            img_path = get_img_path(save_folder, crt_label, img_format.format(imgs_collected[crt_label]))
+            cv2.imwrite(img_path, scan)
 
+        # Classify crop
         if checkpoint_load:
             # Transform to RGB
             with torch.no_grad:
@@ -101,14 +161,47 @@ if __name__ == '__main__':
                 output = model(in_data)
                 _, predicted = torch.max(output, 1)
 
-        cv2.imshow(FULL_CAPTURE_WIN, frame_show)
+        # Prepare full_view image (resize and draw rectangle)
+        frame_show = frame.copy()
+        frame_show = cv2.flip(frame_show, 1)
+        frame_show = cv2.resize(frame_show, (0, 0), fx=view_scale, fy=view_scale)
+        p1_scaled = (p1 * view_scale).astype(np.uint)
+        p2_scaled = (p2 * view_scale).astype(np.uint)
+        frame_show = cv2.rectangle(frame_show, tuple(p1_scaled), tuple(p2_scaled), COLOR_CROP)
 
-        # print(torch.nn.CrossEntropyLoss()(res, test_loss))
-        print(res)
+        clr = RECORD_COLOR[int(recording)]
+        frame_show = cv2.putText(frame_show, f"Selected label: {crt_label}", LABEL_POSITION, FONT, FONT_SIZE, FONT_CLR)
+        frame_show = cv2.circle(frame_show, REC_POSITION, REC_RADIUS, clr, thickness=-1)
+
+        # Prepare crop
+        crop_show = scan.copy()
+        crop_show = cv2.flip(crop_show, 1)
+        crop_show = cv2.resize(crop_show, (crop_view_size, crop_view_size))
+        if True:
+            crop_show = cv2.putText(crop_show, f"{predicted}", LABEL_POSITION, FONT, FONT_SIZE, FONT_CLR)
+
+        cv2.imshow(FULL_CAPTURE_WIN, frame_show)
+        cv2.imshow(CROP_WIN, crop_show)
+
         key = cv2.waitKey(1)
-        if chr(key % 256) == ",":
-            zone_factor += 0.1
-        elif chr(key % 256) == ".":
-            zone_factor -= 0.1
+        if chr(key % 256) == keys.zoom_out:
+            zone_factor += zoom_factor_step
+        elif chr(key % 256) == keys.zoom_in:
+            zone_factor -= zoom_factor_step
+        elif ord("0") <= key % 256 <= ord("9"):
+            crt_label = int(chr(key % 256))
+        elif chr(key % 256) == keys.record:
+            recording = not recording
+        else:
+            pass
+            # print(f"Unrecognized key: {key % 256}")
 
         frame_no += 1
+
+        clear_line(last_msg_len)
+        sys.stdout.flush()
+
+        collected_data_msg = "\t".join([f"[{k}] {v}" for k, v in imgs_collected.items()])
+        msg = print_info.format(collected_data_msg, crt_label, recording, predictions)
+        print(msg)
+        last_msg_len = len(re.findall("\n", msg)) + 1
