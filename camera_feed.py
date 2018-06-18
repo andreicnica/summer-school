@@ -1,7 +1,3 @@
-"""
-    Code adapted from https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
-"""
-
 import torch
 import cv2
 import numpy as np
