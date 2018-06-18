@@ -8,6 +8,7 @@ import torchvision.transforms as transforms
 import torch
 import sys
 import re
+from models import get_model
 
 FULL_CAPTURE_WIN = "Full_capture"
 CROP_WIN = "Crop"
@@ -26,6 +27,7 @@ ACTION_KEYS = {
     "zoom_out": {"key": ".", "info": "Decrease crop size."},
     "label": {"key": "[0-9]", "info": "Set label keys."},
     "record": {"key": "x", "info": "Toggle record on/off."},
+    "quit": {"key": "q", "info": "Exit script."},
 }
 
 
@@ -34,6 +36,7 @@ def get_img_path(base_folder: str, label: int, img_name: str):
     if not os.path.isdir(fld):
         os.mkdir(fld)
     return os.path.join(fld, img_name)
+
 
 def clear_line(no_lines: int):
     for i in range(no_lines):
@@ -75,18 +78,26 @@ if __name__ == '__main__':
     crop_view_size = args.crop_view_size
     zoom_factor_step = args.zoom_factor_step
 
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
     # ==============================================================================================
     # -- Load model & classification data
-    model: torch.nn.Module = None
-    transform: transforms.Compose = None
+    model = None
+    transform = None
 
     if checkpoint_load:
-        # TODO Load model and weights
-        pass
-    # transforms.RG
-    # transform = transforms.Compose(
-    #     [transforms.ToTensor(),
-    #      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        checkpoint = torch.load(checkpoint_load)
+        transform = checkpoint["data_transforms"]["val"]
+        transform = transforms.Compose([transforms.ToPILImage()] + transform.transforms)
+        model_name = checkpoint["model_name"]
+        in_size = checkpoint["in_size"]
+        out_size = checkpoint["out_size"]
+        state_dict = checkpoint["state_dict"]
+        model = get_model(model_name, in_size=in_size, out_size=out_size,
+                          pretrained=True, model_weights=state_dict)
+
+        model = model.to(device)
+        model.eval()
 
     # ==============================================================================================
     # -- Data saving
@@ -150,16 +161,23 @@ if __name__ == '__main__':
                 imgs_collected[crt_label] += 1
             else:
                 imgs_collected[crt_label] = 0
-            img_path = get_img_path(save_folder, crt_label, img_format.format(imgs_collected[crt_label]))
+            img_path = get_img_path(save_folder, crt_label,
+                                    img_format.format(imgs_collected[crt_label]))
             cv2.imwrite(img_path, scan)
 
         # Classify crop
         if checkpoint_load:
             # Transform to RGB
-            with torch.no_grad:
+            with torch.no_grad():
                 in_data = transform(scan.transpose((2, 0, 1))).unsqueeze(0)
+                in_data = in_data.to(device)
+
                 output = model(in_data)
+                output = output.cpu()
                 _, predicted = torch.max(output, 1)
+
+            predicted = predicted[0].item()
+            predictions = output.numpy()
 
         # Prepare full_view image (resize and draw rectangle)
         frame_show = frame.copy()
@@ -170,15 +188,17 @@ if __name__ == '__main__':
         frame_show = cv2.rectangle(frame_show, tuple(p1_scaled), tuple(p2_scaled), COLOR_CROP)
 
         clr = RECORD_COLOR[int(recording)]
-        frame_show = cv2.putText(frame_show, f"Selected label: {crt_label}", LABEL_POSITION, FONT, FONT_SIZE, FONT_CLR)
+        frame_show = cv2.putText(frame_show, f"Selected label: {crt_label}",
+                                 LABEL_POSITION, FONT, FONT_SIZE, FONT_CLR)
         frame_show = cv2.circle(frame_show, REC_POSITION, REC_RADIUS, clr, thickness=-1)
 
         # Prepare crop
         crop_show = scan.copy()
         crop_show = cv2.flip(crop_show, 1)
         crop_show = cv2.resize(crop_show, (crop_view_size, crop_view_size))
-        if True:
-            crop_show = cv2.putText(crop_show, f"{predicted}", LABEL_POSITION, FONT, FONT_SIZE, FONT_CLR)
+        if checkpoint_load:
+            crop_show = cv2.putText(crop_show, f"{predicted}",
+                                    LABEL_POSITION, FONT, FONT_SIZE, FONT_CLR)
 
         cv2.imshow(FULL_CAPTURE_WIN, frame_show)
         cv2.imshow(CROP_WIN, crop_show)
@@ -192,6 +212,8 @@ if __name__ == '__main__':
             crt_label = int(chr(key % 256))
         elif chr(key % 256) == keys.record:
             recording = not recording
+        elif chr(key % 256) == keys.quit:
+            break
         else:
             pass
             # print(f"Unrecognized key: {key % 256}")

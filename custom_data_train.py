@@ -1,6 +1,3 @@
-"""
-    Code from:
-"""
 # -*- coding: utf-8 -*-
 """
 Training a classifier

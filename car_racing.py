@@ -1,3 +1,7 @@
+"""
+    Code from: https://github.com/openai/gym/blob/master/gym/envs/box2d/car_racing.py
+"""
+
 import sys, math
 import numpy as np
 
