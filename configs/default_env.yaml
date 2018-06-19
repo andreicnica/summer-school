@@ -1,9 +1,9 @@
 name: "SingleAgentGatheringEnv"
 verbose: 0
-base_map: "configs/maps/map32_4rooms_freeroad.txt"
+base_map: ""
 map_size: [32,32]
 map_view_extend: 0
-env_max_steps_no: 500
+env_max_steps_no: 10
 no_envs: 1
 no_agents: 1
 agents_collide: no
@@ -20,7 +20,7 @@ reward_init_pos: [[0, 10, 16, 16, 20], [1, 10, 16, 16, 20]]
 use_cuda: no
 visualize_rgb: yes
 store_agents_trace: no
-visualize: no
+visualize: yes
 record_data:
   turned_on: no
   only_coord: no

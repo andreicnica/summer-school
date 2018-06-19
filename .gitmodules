@@ -1,0 +1,3 @@
+[submodule "gathering_mae"]
+	path = gathering_mae
+	url = https://github.com/andreicnica/gathering_mae.git
