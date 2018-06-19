@@ -18,8 +18,6 @@ def report_net_param(model):
         param_max = max(p_max, param_max) if param_max else p_max
         param_groups_count += 1
 
-    print(p_max)
-    print(param_avg)
     param_avg = param_avg / param_groups_count
     grad_avg = grad_avg / grad_groups_count
     return param_max.item(), param_avg.item(), grad_max.item(), grad_avg.item()
