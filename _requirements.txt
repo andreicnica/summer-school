@@ -1,0 +1,8 @@
+numpy=1.13.3
+scipy
+pytorch
+pyyaml
+matplotlib
+opencv3  # conda install -c menpo opencv3
+gathering-mae  # python setup.py install
+gym
