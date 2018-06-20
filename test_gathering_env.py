@@ -34,7 +34,7 @@ if __name__ == '__main__':
         if done:
             obs, r, done = env.restart_game()
             if visualize:
-                env.render()
+                env.render(imshow=True)
 
             print("Episode finished:")
             print("Return per episode: {}".format(agent0_r))
@@ -79,7 +79,7 @@ if __name__ == '__main__':
 
         if visualize:
             print(f"Step: {env_step};\t Reward: {r}")
-            env.render()
+            env.render(imshow=True)
 
         if env_step % 10000 == 0:
             print(time.time() - start_time)
