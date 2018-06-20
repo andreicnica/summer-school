@@ -169,7 +169,8 @@ if __name__ == '__main__':
         if checkpoint_load:
             # Transform to RGB
             with torch.no_grad():
-                in_data = transform(scan.transpose((2, 0, 1))).unsqueeze(0)
+                rgb_scan = cv2.cvtColor(scan, cv2.COLOR_BGR2RGB)
+                in_data = transform(rgb_scan).unsqueeze(0)
                 in_data = in_data.to(device)
 
                 output = model(in_data)
