@@ -20,7 +20,7 @@ reward_distance: no  # Reward based on distance to first reward found on map
 reward_value: [1., -1.]  # [ reward_values, ... ] Reward value for each type of reward defined
 reward_respawn_time: [4, 4]  # [ reward_respawn_time, ...] No steps to wait for each type of
                              # reward to respawn
-reward_init_pos: [[0, 10, 16, 16, 20], [1, 50, 16, 16, 20]]
+reward_init_pos: [[0, 10, 25, 25, 5], [1, 50, 16, 16, 20]]
                   # [ [Reward type, no of reward elements, x_coord, y_coord, radius] ...]
                   # Define zones to spawn / re-spawn rewards
 use_cuda: no

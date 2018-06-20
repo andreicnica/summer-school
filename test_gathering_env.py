@@ -15,6 +15,7 @@ if __name__ == '__main__':
     cfg = load_config("configs/default_env.yaml")
 
     EVAL_STEPS = 100000
+    return_span = 20
 
     no_agents = cfg.no_agents
     # Force visual
@@ -27,8 +28,9 @@ if __name__ == '__main__':
 
     done = 1
 
-    agent0_r = 0
+    agent0_r = []
     start_time = time.time()
+
     while env_step < EVAL_STEPS:
         # check if env needs reset
         if done:
@@ -37,10 +39,8 @@ if __name__ == '__main__':
                 env.render(imshow=True)
 
             print("Episode finished:")
-            print("Return per episode: {}".format(agent0_r))
-            print("Agent0 reward: {}".format(agent0_r))
-
-            agent0_r = 0
+            print(f"Return per episode {return_span}:".format(sum(agent0_r[-return_span:])))
+            print("Agent0 mean reward: {}".format(np.mean(agent0_r)))
 
         actions = np.random.randint(7, size=no_agents)
 
@@ -75,10 +75,10 @@ if __name__ == '__main__':
         obs, r, done, _ = env.step(actions[0])
 
         env_step += 1
-        agent0_r += r
-
+        agent0_r.append(r)
+        print(obs)
         if visualize:
-            print(f"Step: {env_step};\t Reward: {r}")
+            print(f"Step: {env_step};\t Reward: {r} | Return: {sum(agent0_r[-return_span:])}\r")
             env.render(imshow=True)
 
         if env_step % 10000 == 0:
