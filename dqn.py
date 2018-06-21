@@ -297,11 +297,12 @@ plt.show()
 
 
 BATCH_SIZE = 128
-GAMMA = 0.999
+GAMMA = 0.4
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 10000
 TARGET_UPDATE = 4
+OPTIMIZE_FREQ = 5
 
 policy_net = DQN(in_size=obs_size, out_size=torch.Size([no_actions])).to(device)
 target_net = DQN(in_size=obs_size, out_size=torch.Size([no_actions])).to(device)
@@ -325,6 +326,10 @@ def select_action(state, eval=False):
         sample = random.random()
         eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
         steps_done += 1
+
+        if steps_done % (EPS_DECAY // 4) == 0:
+            print(f"Crt eps: {eps_threshold}")
+
         if sample < eps_threshold:
             act = torch.tensor([[random.randrange(no_actions)]], device=device, dtype=torch.long)
 
@@ -468,6 +473,7 @@ def eval_agent(ep_no):
 
 num_episodes = 5000
 returns = []
+all_steps = 0
 for i_episode in range(num_episodes):
     ep_return = 0
     # Initialize the environment and state
@@ -482,6 +488,7 @@ for i_episode in range(num_episodes):
         ep_return += reward
         current_screen = process_obs(current_screen)
         reward = torch.tensor([reward])
+        all_steps += 1
 
         # Observe new state
         if not done:
@@ -496,8 +503,9 @@ for i_episode in range(num_episodes):
         state = next_state
 
         # Perform one step of the optimization (on the target network)
-        if i_episode > 10:
+        if i_episode > 10 and all_steps % OPTIMIZE_FREQ == 0:
             optimize_model()
+
         if done:
             returns.append(ep_return)
             episode_durations.append(t + 1)
