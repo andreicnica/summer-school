@@ -76,7 +76,7 @@ if __name__ == '__main__':
 
         env_step += 1
         agent0_r.append(r)
-        print(obs)
+
         if visualize:
             print(f"Step: {env_step};\t Reward: {r} | Return: {sum(agent0_r[-return_span:])}\r")
             env.render(imshow=True)
